@@ -1,0 +1,42 @@
+{
+  "name": "bitcoin-trading-dashboard",
+  "version": "2.0.0",
+  "description": "Dashboard de trading de Bitcoin amb anàlisi tècnic, indicadors de mercat i gestió d'operacions",
+  "main": "index.html",
+  "scripts": {
+    "start": "python -m http.server 8000",
+    "serve": "npx serve .",
+    "format": "prettier --write \"*.html\" \"*.js\" \"*.css\"",
+    "lint": "eslint \"*.js\"",
+    "validate": "html-validate index.html"
+  },
+  "keywords": [
+    "bitcoin",
+    "trading",
+    "dashboard",
+    "cryptocurrency",
+    "react",
+    "tailwind",
+    "fear-greed-index",
+    "technical-analysis"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/bitcoin-trading-dashboard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/bitcoin-trading-dashboard/issues"
+  },
+  "homepage": "https://yourusername.github.io/bitcoin-trading-dashboard/",
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "html-validate": "^8.7.4",
+    "prettier": "^3.1.0",
+    "serve": "^14.2.1"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
