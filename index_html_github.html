@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Dashboard de trading de Bitcoin amb indicadors de mercat i senyals automàtiques">
+    <meta name="keywords" content="bitcoin, trading, dashboard, cryptocurrency, fear greed index">
+    <meta name="author" content="Bitcoin Trading Dashboard">
+    
+    <title>Bitcoin Trading Dashboard</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23f7931a'><path d='M23.638 14.904c-1.602 6.43-8.113 10.34-14.542 8.736C2.67 22.05-1.244 15.525.362 9.105 1.962 2.67 8.475-1.243 14.9.358c6.43 1.605 10.342 8.115 8.738 14.546z'/></svg>">
+    
+    <!-- External Dependencies -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/recharts@2.8.0/umd/Recharts.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Custom Styles -->
+    <style>
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .dashboard-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            margin: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        }
+        
+        .signal-card {
+            background: linear-gradient(135deg, var(--signal-color-1), var(--signal-color-2));
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            transition: transform 0.3s ease;
+        }
+        
+        .signal-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .indicator-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+            transition: all 0.3s ease;
+        }
+        
+        .indicator-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useCallback, useMemo } = React;
+        const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } = Recharts;
+
+        // Configuration
+        const CONFIG = {
+            UPDATE_INTERVAL: 5 * 60 * 1000, // 5 minutes
+            STORAGE_KEY: 'bitcoin-trading-trades',
+            API_ENDPOINTS: {
+                PRICE: 'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true',
+                HISTORICAL: 'https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range',
+                FEAR_GREED: 'https://api.alternative.me/fng/?limit=1'
+            },
+            SIGNAL_THRESHOLDS: {
+                FEAR_BUY: 25,
+                FEAR_SELL: 75,
+                CHANGE_SELL: -10,
+                CHANGE_BUY: -5,
+                CHANGE_HOLD_MIN: -10,
+                CHANGE_HOLD_MAX: 5
+            }
+        };
+
+        // Translations
+        const translations = {
+            ca: {
+                title: "Bitcoin Trading Dashboard",
+                subtitle: "Anàlisi tècnic i senyals de mercat",
+                lastUpdate: "Última actualització",
+                refresh: "Actualitzar",
+                export: "Exportar",
+                tradingSignal: "SENYAL",
+                recommendation: "Recomanació basada en anàlisi tècnic i sentiment del mercat",
+                price: "Preu Bitcoin",
+                change24h: "% 24h",
+                fearGreed: "Fear & Greed Index",
+                whaleVolume: "Volum Whales",
+                netFlows: "Fluxos Nets",
+                trades: "Operacions",
+                addTrade: "Afegir Operació",
+                newTrade: "Nova Operació",
+                amountPlaceholder: "Quantitat en BTC",
+                noTrades: "Encara no hi ha operacions",
+                type: "Tipus",
+                buy: "Compra",
+                sell: "Venda",
+                hold: "Mantenir",
+                date: "Data",
+                amount: "Quantitat",
+                portfolio: "Cartera",
+                language: "Idioma",
+                loading: "Carregant...",
+                error: "Error",
+                invalidAmount: "Si us plau, introdueix una quantitat vàlida",
+                priceChart: "Gràfic de Preus (24h)",
+                errorFetchingPrice: "Error al obtenir el preu de Bitcoin",
+                errorFetchingFearGreed: "Error al obtenir l'índex Fear & Greed",
+                deleteAll: "Esborrar Tot",
+                confirmDelete: "Estàs segur que vols esborrar totes les operacions?"
+            },
+            en: {
+                title: "Bitcoin Trading Dashboard",
+                subtitle: "Technical analysis and market signals",
+                lastUpdate: "Last update",
+                refresh: "Refresh",
+                export: "Export",
+                tradingSignal: "SIGNAL",
+                recommendation: "Recommendation based on technical analysis and market sentiment",
+                price: "Bitcoin Price",
+                change24h: "% 24h",
+                fearGreed: "Fear & Greed Index",
+                whaleVolume: "Whale Volume",
+                netFlows: "Net Flows",
+                trades: "Trades",
+                addTrade: "Add Trade",
+                newTrade: "New Trade",
+                amountPlaceholder: "Amount in BTC",
+                noTrades: "No trades yet",
+                type: "Type",
+                buy: "Buy",
+                sell: "Sell",
+                hold: "Hold",
+                date: "Date",
+                amount: "Amount",
+                portfolio: "Portfolio",
+                language: "Language",
+                loading: "Loading...",
+                error: "Error",
+                invalidAmount: "Please enter a valid amount",
+                priceChart: "Price Chart (24h)",
+                errorFetchingPrice: "Error fetching Bitcoin price",
+                errorFetchingFearGreed: "Error fetching Fear & Greed Index",
+                deleteAll: "Delete All",
+                confirmDelete: "Are you sure you want to delete all trades?"
+            }
+        };
+
+        // Custom hooks
+        const useLocalStorage = (key, initialValue) => {
+            const [storedValue, setStoredValue] = useState(() => {
+                try {
+                    const item = window.localStorage.getItem(key);
+                    return item ? JSON.parse(item) : initialValue;
+                } catch (error) {
+                    console.error(`Error reading localStorage key "${key}":`, error);
+                    return initialValue;
+                }
+            });
+
+            const setValue = (value) => {
+                try {
+                    const valueToStore = value instanceof Function ? value(storedValue) : value;
+                    setStoredValue(valueToStore);
+                    window.localStorage.setItem(key, JSON.stringify(valueToStore));
+                } catch (error) {
+                    console.error(`Error setting localStorage key "${key}":`, error);
+                }
+            };
+
+            return [storedValue, setValue];
+        };
+
+        // API functions
+        const apiService = {
+            async fetchBitcoinPrice() {
+                const response = await fetch(CONFIG.API_ENDPOINTS.PRICE);
+                if (!response.ok) throw new Error('Failed to fetch price');
+                const data = await response.json();
+                
+                if (!data.bitcoin) throw new Error('Invalid price data');
+                
+                return {
+                    price: data.bitcoin.usd,
+                    change24h: data.bitcoin.usd_24h_change
+                };
+            },
+
+            async fetchPriceHistory() {
+                const now = Math.floor(Date.now() / 1000);
+                const twentyFourHoursAgo = now - (24 * 60 * 60);
+                
+                const response = await fetch(
+                    `${CONFIG.API_ENDPOINTS.HISTORICAL}?vs_currency=usd&from=${twentyFourHoursAgo}&to=${now}`
+                );
+                
+                if (!response.ok) throw new Error('Failed to fetch price history');
+                const data = await response.json();
+                
+                if (!data.prices) throw new Error('Invalid historical data');
+                
+                return data.prices.map(item => ({
+                    time: new Date(item[0]).toLocaleTimeString('ca-CA', { 
+                        hour: '2-digit', 
+                        minute: '2-digit' 
+                    }),
+                    price: Math.round(item[1])
+                })).slice(-24);
+            },
+
+            async fetchFearGreedIndex() {
+                const response = await fetch(CONFIG.API_ENDPOINTS.FEAR_GREED);
+                if (!response.ok) throw new Error('Failed to fetch Fear & Greed Index');
+                const data = await response.json();
+                
+                if (!data.data || !data.data.length) throw new Error('Invalid F&G data');
+                
+                return {
+                    value: parseInt(data.data[0].value),
+                    classification: data.data[0].value_classification
+                };
+            }
+        };
+
+        // Trading signal logic
+        const getTradingSignal = (bitcoinPrice, fearGreedIndex) => {
+            if (!bitcoinPrice || !fearGreedIndex) {
+                return { signal: "WAIT", color: "bg-gray-500", colorVars: "--signal-color-1: #6b7280; --signal-color-2: #4b5563;" };
+            }
+
+            const fear = fearGreedIndex.value;
+            const change = bitcoinPrice.change24h;
+
+            if (fear < CONFIG.SIGNAL_THRESHOLDS.FEAR_BUY && change > CONFIG.SIGNAL_THRESHOLDS.CHANGE_BUY) {
+                return { 
+                    signal: "BUY", 
+                    color: "bg-green-500", 
+                    colorVars: "--signal-color-1: #10b981; --signal-color-2: #059669;" 
+                };
+            }
+            
+            if (fear > CONFIG.SIGNAL_THRESHOLDS.FEAR_SELL || change < CONFIG.SIGNAL_THRESHOLDS.CHANGE_SELL) {
+                return { 
+                    signal: "SELL", 
+                    color: "bg-red-500", 
+                    colorVars: "--signal-color-1: #ef4444; --signal-color-2: #dc2626;" 
+                };
+            }
+            
+            if (fear >= CONFIG.SIGNAL_THRESHOLDS.FEAR_BUY && 
+                fear <= CONFIG.SIGNAL_THRESHOLDS.FEAR_SELL && 
+                change >= CONFIG.SIGNAL_THRESHOLDS.CHANGE_HOLD_MIN && 
+                change <= CONFIG.SIGNAL_THRESHOLDS.CHANGE_HOLD_MAX) {
+                return { 
+                    signal: "HOLD", 
+                    color: "bg-yellow-500", 
+                    colorVars: "--signal-color-1: #f59e0b; --signal-color-2: #d97706;" 
+                };
+            }
+
+            return { 
+                signal: "WAIT", 
+                color: "bg-gray-500", 
+                colorVars: "--signal-color-1: #6b7280; --signal-color-2: #4b5563;" 
+            };
+        };
+
+        // Main Dashboard Component
+        const Dashboard = () => {
+            const [lang, setLang] = useState("ca");
+            const t = translations[lang];
+
+            const [bitcoinPrice, setBitcoinPrice] = useState(null);
+            const [fearGreedIndex, setFearGreedIndex] = useState(null);
+            const [priceHistory, setPriceHistory] = useState([]);
+            const [lastUpdate, setLastUpdate] = useState(new Date());
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState(null);
+            
+            const [trades, setTrades] = useLocalStorage(CONFIG.STORAGE_KEY, []);
+            const [newTradeAmount, setNewTradeAmount] = useState('');
+            const [newTradeType, setNewTradeType] = useState('buy');
+
+            const updateAll = useCallback(async () => {
+                setLoading(true);
+                setError(null);
+                
+                try {
+                    const [priceData, historyData, fearData] = await Promise.allSettled([
+                        apiService.fetchBitcoinPrice(),
+                        apiService.fetchPriceHistory(),
+                        apiService.fetchFearGreedIndex()
+                    ]);
+
+                    if (priceData.status === 'fulfilled') {
+                        setBitcoinPrice(priceData.value);
+                    } else {
+                        console.error('Price fetch failed:', priceData.reason);
+                        setError(t.errorFetchingPrice);
+                    }
+
+                    if (historyData.status === 'fulfilled') {
+                        setPriceHistory(historyData.value);
+                    }
+
+                    if (fearData.status === 'fulfilled') {
+                        setFearGreedIndex(fearData.value);
+                    } else {
+                        console.error('Fear & Greed fetch failed:', fearData.reason);
+                        if (!error) setError(t.errorFetchingFearGreed);
+                    }
+
+                    setLastUpdate(new Date());
+                } catch (err) {
+                    console.error('Update failed:', err);
+                    setError(err.message);
+                } finally {
+                    setLoading(false);
+                }
+            }, [t, error]);
+
+            useEffect(() => {
+                updateAll();
+                const interval = setInterval(updateAll, CONFIG.UPDATE_INTERVAL);
+                return () => clearInterval(interval);
+            }, [updateAll]);
+
+            const tradingSignal = useMemo(() => 
+                getTradingSignal(bitcoinPrice, fearGreedIndex), 
+                [bitcoinPrice, fearGreedIndex]
+            );
+
+            const addTrade = useCallback((e) => {
+                e.preventDefault();
+                const amount = parseFloat(newTradeAmount);
+                
+                if (isNaN(amount) || amount <= 0) {
+                    alert(t.invalidAmount);
+                    return;
+                }
+
+                const trade = {
+                    id: Date.now(),
+                    date: new Date().toLocaleString(lang === 'ca' ? 'ca-CA' : 'en-US'),
+                    type: t[newTradeType],
+                    price: bitcoinPrice?.price || 0,
+                    amount: amount,
+                    signal: tradingSignal.signal
+                };
+
+                setTrades(prevTrades => [trade, ...prevTrades]);
+                setNewTradeAmount('');
+            }, [newTradeAmount, newTradeType, bitcoinPrice, tradingSignal, t, lang, setTrades]);
+
+            const exportData = useCallback(() => {
+                const dataToExport = {
+                    trades,
+                    exportDate: new Date().toISOString(),
+                    totalTrades: trades.length
+                };
+                
+                const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { 
+                    type: "application/json" 
+                });
+                
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `trading-data-${new Date().toISOString().split('T')[0]}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, [trades]);
+
+            const clearAllTrades = useCallback(() => {
+                if (window.confirm(t.confirmDelete)) {
+                    setTrades([]);
+                }
+            }, [t, setTrades]);
+
+            return (
+                <div className="dashboard-container fade-in p-6 max-w-7xl mx-auto">
+                    {/* Header */}
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                        <div>
+                            <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+                                {t.title}
+                            </h1>
+                            <p className="text-gray-600 text-lg">{t.subtitle}</p>
+                            <p className="text-gray-500 text-sm">
+                                {t.lastUpdate}: {lastUpdate.toLocaleString(lang === 'ca' ? 'ca-CA' : 'en-US')}
+                            </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            <button 
+                                onClick={updateAll} 
+                                disabled={loading} 
+                                className="btn-primary text-white px-4 py-2 rounded-lg disabled:opacity-50 flex items-center gap-2"
+                            >
+                                {loading ? <span className="loading-spinner"></span> : '🔄'}
+                                {loading ? t.loading : t.refresh}
+                            </button>
+                            <button 
+                                onClick={exportData} 
+                                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-all"
+                            >
+                                📊 {t.export}
+                            </button>
+                            <select 
+                                value={lang} 
+                                onChange={(e) => setLang(e.target.value)} 
+                                className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            >
+                                <option value="ca">🇪🇸 Català</option>
+                                <option value="en">🇬🇧 English</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    {/* Error Message */}
+                    {error && (
+                        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-6 fade-in">
+                            <strong>{t.error}:</strong> {error}
+                        </div>
+                    )}
+
+                    {/* Trading Signal */}
+                    <div 
+                        className="signal-card text-white p-6 mb-6"
+                        style={{ [tradingSignal.colorVars]: '' }}
+                    >
+                        <h2 className="text-3xl font-bold mb-2">
+                            {t.tradingSignal}: {tradingSignal.signal}
+                        </h2>
+                        <p className="text-xl opacity-90">{t.recommendation}</p>
+                    </div>
+
+                    {/* Market Indicators */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
+                        <div className="indicator-card p-6">
+                            <div className="flex items-center justify-between mb-2">
+                                <p className="text-gray-600 text-sm font-medium">{t.price}</p>
+                                <span className="text-2xl">₿</span>
+                            </div>
+                            <p className="text-3xl font-bold text-gray-900">
+                                {bitcoinPrice ? `$${bitcoinPrice.price.toLocaleString()}` : t.loading}
+                            </p>
+                            {bitcoinPrice && (
+                                <p className={`text-lg font-semibold ${
+                                    bitcoinPrice.change24h >= 0 ? "text-green-600" : "text-red-600"
+                                }`}>
+                                    {bitcoinPrice.change24h >= 0 ? "↗" : "↘"} 
+                                    {Math.abs(bitcoinPrice.change24h).toFixed(2)}% {t.change24h}
+                                </p>
+                            )}
+                        </div>
+
+                        <div className="indicator-card p-6">
+                            <div className="flex items-center justify-between mb-2">
+                                <p className="text-gray-600 text-sm font-medium">{t.fearGreed}</p>
+                                <span className="text-2xl">😰</span>
+                            </div>
+                            <p className="text-3xl font-bold text-gray-900">
+                                {fearGreedIndex ? fearGreedIndex.value : t.loading}
+                            </p>
+                            {fearGreedIndex && (
+                                <p className="text-lg font-semibold text-gray-600 capitalize">
+                                    {fearGreedIndex.classification}
+                                </p>
+                            )}
+                        </div>
+
+                        <div className="indicator-card p-6">
+                            <div className="flex items-center justify-between mb-2">
+                                <p className="text-gray-600 text-sm font-medium">{t.trades}</p>
+                                <span className="text-2xl">📊</span>
+                            </div>
+                            <p className="text-3xl font-bold text-gray-900">{trades.length}</p>
+                            <p className="text-lg font-semibold text-gray-600">
+                                {trades.length > 0 ? 'Total operations' : t.noTrades}
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Price Chart */}
+                    {priceHistory.length > 0 && (
+                        <div className="bg-white p-6 rounded-xl shadow-lg mb-6">
+                            <h3 className="text-xl font-bold mb-4 text-gray-800">{t.priceChart}</h3>
+                            <div className="h-80">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={priceHistory}>
+                                        <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                                        <XAxis 
+                                            dataKey="time" 
+                                            tick={{ fontSize: 12 }}
+                                            stroke="#6b7280"
+                                        />
+                                        <YAxis 
+                                            tick={{ fontSize: 12 }}
+                                            stroke="#6b7280"
+                                            tickFormatter={(value) => `$${value.toLocaleString()}`}
+                                        />
+                                        <Tooltip 
+                                            formatter={(value) => [`$${value.toLocaleString()}`, 'Price']}
+                                            labelStyle={{ color: '#374151' }}
+                                            contentStyle={{ 
+                                                backgroundColor: 'white', 
+                                                border: '1px solid #d1d5db',
+                                                borderRadius: '8px'
+                                            }}
+                                        />
+                                        <Line 
+                                            type="monotone" 
+                                            dataKey="price" 
+                                            stroke="#f7931a" 
+                                            strokeWidth={3}
+                                            dot={false}
+                                            activeDot={{ r: 6, stroke: '#f7931a', strokeWidth: 2 }}
+                                        />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Trade Management */}
+                    <div className="bg-white p-6 rounded-xl shadow-lg">
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-2xl font-bold text-gray-800">{t.newTrade}</h2>
+                            {trades.length > 0 && (
+                                <button
+                                    onClick={clearAllTrades}
+                                    className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-lg text-sm transition-all"
+                                >
+                                    🗑️ {t.deleteAll}
+                                </button>
+                            )}
+                        </div>
+
+                        <form onSubmit={addTrade} className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
+                            <input
+                                type="number"
+                                step="0.00000001"
+                                placeholder={t.amountPlaceholder}
+                                value={newTradeAmount}
+                                onChange={(e) => setNewTradeAmount(e.target.value)}
+                                className="border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                                required
+                            />
+                            <select
+                                value={newTradeType}
+                                onChange={(e) => setNewTradeType(e.target.value)}
+                                className="border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            >
+                                <option value="buy">📈 {t.buy}</option>
+                                <option value="sell">📉 {t.sell}</option>
+                                <option value="hold">⏸️ {t.hold}</option>
+                            </select>
+                            <div className="text-sm text-gray-600 flex items-center">
+                                Current: ${bitcoinPrice?.price?.toLocaleString() || '---'}
+                            </div>
+                            <button 
+                                type="submit" 
+                                className="btn-primary text-white px-6 py-2 rounded-lg font-semibold transition-all"
+                                disabled={loading || !bitcoinPrice}
+                            >
+                                ➕ {t.addTrade}
+                            </button>
+                        </form>
+
+                        <div className="border-t pt-6">
+                            <h3 className="text-xl font-bold mb-4 text-gray-800">
+                                {t.trades} ({trades.length})
+                            </h3>
+                            
+                            {trades.length === 0 ? (
+                                <div className="text-center py-12 text-gray-500">
+                                    <div className="text-6xl mb-4">📊</div>
+                                    <p className="text-xl">{t.noTrades}</p>
+                                    <p className="text-sm mt-2">Comença afegint la teva primera operació!</p>
+                                </div>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                        <thead>
+                                            <tr className="border-b-2 border-gray-200 bg-gray-50">
+                                                <th className="text-left p-3 font-semibold">{t.date}</th>
+                                                <th className="text-left p-3 font-semibold">{t.type}</th>
+                                                <th className="text-right p-3 font-semibold">{t.amount}</th>
+                                                <th className="text-right p-3 font-semibold">{t.price}</th>
+                                                <th className="text-center p-3 font-semibold">Signal</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {trades.map((trade, index) => (
+                                                <tr 
+                                                    key={trade.id} 
+                                                    className={`border-b hover:bg-gray-50 transition-colors ${
+                                                        index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                                                    }`}
+                                                >
+                                                    <td className="p-3 text-gray-700">{trade.date}</td>
+                                                    <td className="p-3">
+                                                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                                            trade.type === t.buy ? 'bg-green-100 text-green-800' :
+                                                            trade.type === t.sell ? 'bg-red-100 text-red-800' :
+                                                            'bg-yellow-100 text-yellow-800'
+                                                        }`}>
+                                                            {trade.type === t.buy ? '📈' : trade.type === t.sell ? '📉' : '⏸️'}
+                                                            {trade.type}
+                                                        </span>
+                                                    </td>
+                                                    <td className="p-3 text-right font-mono">
+                                                        {trade.amount.toFixed(8)} BTC
+                                                    </td>
+                                                    <td className="p-3 text-right font-mono">
+                                                        ${trade.price.toLocaleString()}
+                                                    </td>
+                                                    <td className="p-3 text-center">
+                                                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-bold ${
+                                                            trade.signal === 'BUY' ? 'bg-green-500 text-white' :
+                                                            trade.signal === 'SELL' ? 'bg-red-500 text-white' :
+                                                            trade.signal === 'HOLD' ? 'bg-yellow-500 text-white' :
+                                                            'bg-gray-500 text-white'
+                                                        }`}>
+                                                            {trade.signal}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Footer */}
+                    <div className="text-center mt-8 pt-6 border-t border-gray-200">
+                        <p className="text-gray-500 text-sm">
+                            ⚠️ Aquest dashboard és només per a fins educatius i d'informació. 
+                            No constitueix consell financer.
+                        </p>
+                        <p className="text-gray-400 text-xs mt-2">
+                            Dades proporcionades per CoinGecko API i Alternative.me
+                        </p>
+                        <div className="flex justify-center items-center gap-4 mt-4 text-sm text-gray-600">
+                            <a 
+                                href="https://github.com" 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="hover:text-purple-600 transition-colors"
+                            >
+                                🐙 GitHub
+                            </a>
+                            <span>•</span>
+                            <a 
+                                href="#" 
+                                className="hover:text-purple-600 transition-colors"
+                            >
+                                📊 API Status
+                            </a>
+                            <span>•</span>
+                            <span>v2.0.0</span>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Initialize the application
+        ReactDOM.createRoot(document.getElementById("root")).render(<Dashboard />);
+    </script>
+</body>
+</html>
+                                    
