@@ -1,0 +1,43 @@
+body {
+  font-family: Arial, sans-serif;
+  background: #222;
+  color: #eee;
+  margin: 0;
+  padding: 0;
+}
+header, footer {
+  background: #111;
+  text-align: center;
+  padding: 1em;
+}
+main {
+  max-width: 800px;
+  margin: auto;
+  padding: 2em;
+  background: #292929;
+  border-radius: 8px;
+}
+h1, h2 {
+  color: #FFD700;
+}
+#dashboard {
+  margin-bottom: 2em;
+}
+canvas {
+  width: 100% !important;
+  max-width: 700px;
+  height: 300px !important;
+  background: #fff;
+  border-radius: 4px;
+}
+#marketData ul {
+  list-style: none;
+  padding: 0;
+}
+#marketData li {
+  margin-bottom: 0.5em;
+  font-size: 1.1em;
+}
+strong {
+  color: #FFD700;
+}
